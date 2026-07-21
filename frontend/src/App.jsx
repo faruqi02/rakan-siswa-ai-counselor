@@ -182,6 +182,8 @@ export default function App() {
         setUsers(usersData.map(u => ({
           id: u.id,
           name: u.anonymous_name,
+          email: u.email,
+          phone: u.phone,
           role: u.role,
           joined: new Date(u.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' }),
           flags: u.flag_count,

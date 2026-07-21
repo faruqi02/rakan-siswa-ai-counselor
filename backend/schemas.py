@@ -49,6 +49,12 @@ class UserPrivate(UserPublic):
 class UserStatusUpdate(BaseModel):
     status: str   # 'Active' | 'Suspended' | 'Deactivated'
 
+class AdminUserUpdate(BaseModel):
+    email:  Optional[str] = None
+    phone:  Optional[str] = None
+    role:   Optional[str] = None
+    status: Optional[str] = None
+
 
 # ─────────────────────────── TRAINEE PROFILE ───────────────────────────
 

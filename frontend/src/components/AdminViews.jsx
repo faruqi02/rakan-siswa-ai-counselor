@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
 import * as Icons from 'lucide-react';
-import { moderatePost, updateUserStatus, fetchAnalyticsSummary } from '../api';
+import { moderatePost, updateUserStatus, updateUserDetails, fetchAnalyticsSummary } from '../api';
+
+const HighlightText = ({ text, highlight }) => {
+  if (!highlight || !highlight.trim()) return <span>{text}</span>;
+  const regex = new RegExp(`(${highlight})`, 'gi');
+  const parts = String(text).split(regex);
+  return (
+    <span>
+      {parts.map((part, i) => 
+        regex.test(part) ? <mark key={i} style={{ backgroundColor: '#fef08a', color: 'inherit' }}>{part}</mark> : <span key={i}>{part}</span>
+      )}
+    </span>
+  );
+};
 
 export default function AdminViews({
   currentTab,
@@ -20,19 +33,23 @@ export default function AdminViews({
 }) {
 
   // ── Moderator UI state (local only — these are config, not DB) ──
-  const [toxicityThreshold, setToxicityThreshold]         = useState(0.70);
+  const [toxicityThreshold, setToxicityThreshold] = useState(0.70);
   const [cyberbullyingThreshold, setCyberbullyingThreshold] = useState(0.65);
-  const [selfHarmThreshold, setSelfHarmThreshold]         = useState(0.50);
-  const [autoBlock, setAutoBlock]                         = useState(true);
-  const [autoNotify, setAutoNotify]                       = useState(true);
-  const [sentimentAnalysis, setSentimentAnalysis]         = useState(true);
-  const [crisisHotline, setCrisisHotline]                 = useState(true);
+  const [selfHarmThreshold, setSelfHarmThreshold] = useState(0.50);
+  const [autoBlock, setAutoBlock] = useState(true);
+  const [autoNotify, setAutoNotify] = useState(true);
+  const [sentimentAnalysis, setSentimentAnalysis] = useState(true);
+  const [crisisHotline, setCrisisHotline] = useState(true);
 
   // ── Anomaly alert ──
-  const [anomalyDismissed, setAnomalyDismissed]           = useState(false);
+  const [anomalyDismissed, setAnomalyDismissed] = useState(false);
 
   // ── User search ──
-  const [userSearch, setUserSearch]                       = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [editingUser, setEditingUser] = useState(null);
+  const [editFormData, setEditFormData] = useState({ email: '', phone: '', role: '', status: '' });
 
   // ── Flagged post actions ──
   const handleMarkSafe = async (post) => {
@@ -89,19 +106,52 @@ export default function AdminViews({
     }
   };
 
-  const filteredUsers = users.filter(u =>
-    u.name.toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const handleEditClick = (user) => {
+    setEditingUser(user);
+    setEditFormData({
+      email: user.email || '',
+      phone: user.phone || '',
+      role: user.role || 'student',
+      status: user.status || 'Active',
+    });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const updatedUser = await updateUserDetails(editingUser.id, editFormData);
+      setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updatedUser, name: updatedUser.anonymous_name, joined: new Date(updatedUser.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' }) } : u));
+      setEditingUser(null);
+    } catch (err) {
+      alert('Failed: ' + err.message);
+    }
+  };
+
+  const filteredUsers = users.filter(u => {
+    const searchLower = userSearch.toLowerCase();
+    const matchesSearch =
+      (u.name && u.name.toLowerCase().includes(searchLower)) ||
+      (u.email && u.email.toLowerCase().includes(searchLower)) ||
+      (u.phone && u.phone.toLowerCase().includes(searchLower)) ||
+      (u.role && u.role.toLowerCase().includes(searchLower)) ||
+      (u.joined && u.joined.toLowerCase().includes(searchLower)) ||
+      (u.flags !== undefined && u.flags.toString().includes(searchLower)) ||
+      (u.status && u.status.toLowerCase().includes(searchLower));
+
+    const matchesRole = roleFilter === 'all' || u.role?.toLowerCase() === roleFilter;
+    const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   // ── Analytics numbers (from API or fallbacks) ──
-  const totalUsers    = analytics?.total_users          ?? users.length;
-  const activeStudents = analytics?.active_students     ?? users.filter(u => u.role === 'student' && u.status === 'Active').length;
-  const activeTrainees = analytics?.active_trainees     ?? users.filter(u => u.role === 'trainee').length;
-  const totalPosts     = analytics?.total_posts         ?? posts.length;
-  const flaggedCount   = analytics?.flagged_posts_count ?? flaggedPosts.length;
-  const moodToday      = analytics?.mood_logs_today     ?? 0;
-  const sessionsWeek   = analytics?.sessions_this_week  ?? 0;
-  const pendingApts    = analytics?.pending_appointments ?? 0;
+  const totalUsers = analytics?.total_users ?? users.length;
+  const activeStudents = analytics?.active_students ?? users.filter(u => u.role === 'student' && u.status === 'Active').length;
+  const activeTrainees = analytics?.active_trainees ?? users.filter(u => u.role === 'trainee').length;
+  const totalPosts = analytics?.total_posts ?? posts.length;
+  const flaggedCount = analytics?.flagged_posts_count ?? flaggedPosts.length;
+  const moodToday = analytics?.mood_logs_today ?? 0;
+  const sessionsWeek = analytics?.sessions_this_week ?? 0;
+  const pendingApts = analytics?.pending_appointments ?? 0;
 
   return (
     <div className="animated-view">
@@ -379,14 +429,37 @@ export default function AdminViews({
               <h3>User Database</h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>UMS encrypted directory — {users.length} users registered</p>
             </div>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search anonymous IDs…"
-              style={{ maxWidth: '250px' }}
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-            />
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <select
+                className="search-input"
+                style={{ cursor: 'pointer' }}
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">All Status</option>
+                <option value="Active">Active</option>
+                <option value="Suspended">Suspended</option>
+              </select>
+              <select
+                className="search-input"
+                style={{ cursor: 'pointer' }}
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+              >
+                <option value="all">All Roles</option>
+                <option value="student">Student</option>
+                <option value="trainee">Trainee</option>
+                <option value="counselor">Counselor</option>
+              </select>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search"
+                style={{ maxWidth: '250px' }}
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+              />
+            </div>
           </div>
 
           {users.length === 0 ? (
@@ -400,6 +473,8 @@ export default function AdminViews({
                 <thead>
                   <tr>
                     <th>Anonymous ID</th>
+                    <th>Email</th>
+                    <th>Phone No</th>
                     <th>Role</th>
                     <th>Joined</th>
                     <th>Flags Issued</th>
@@ -413,21 +488,28 @@ export default function AdminViews({
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <div className="avatar-circle" style={{ width: '1.75rem', height: '1.75rem', fontSize: '0.75rem' }}>{user.name.slice(-2)}</div>
-                          <strong>{user.name}</strong>
+                          <strong><HighlightText text={user.name} highlight={userSearch} /></strong>
                         </div>
                       </td>
-                      <td style={{ textTransform: 'capitalize' }}>{user.role}</td>
-                      <td>{user.joined}</td>
-                      <td>{user.flags || 0}</td>
+                      <td><HighlightText text={user.email || 'N/A'} highlight={userSearch} /></td>
+                      <td><HighlightText text={user.phone || 'N/A'} highlight={userSearch} /></td>
+                      <td style={{ textTransform: 'capitalize' }}><HighlightText text={user.role} highlight={userSearch} /></td>
+                      <td><HighlightText text={user.joined} highlight={userSearch} /></td>
+                      <td><HighlightText text={user.flags || 0} highlight={userSearch} /></td>
                       <td>
                         <span style={{ fontSize: '0.75rem', fontWeight: '600', color: user.status === 'Active' ? 'var(--success)' : 'var(--danger)', background: user.status === 'Active' ? '#d1fae5' : '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                          {user.status}
+                          <HighlightText text={user.status} highlight={userSearch} />
                         </span>
                       </td>
                       <td>
-                        <button className="btn btn-outline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => handleManageUser(user)}>
-                          {user.status === 'Active' ? 'Suspend' : 'Restore'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button className={`btn btn-outline ${user.status === 'Active' ? 'btn-suspend' : ''}`} style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => handleManageUser(user)}>
+                            {user.status === 'Active' ? 'Suspend' : 'Restore'}
+                          </button>
+                          <button className="btn btn-outline btn-edit" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }} onClick={() => handleEditClick(user)}>
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -461,6 +543,44 @@ export default function AdminViews({
         </div>
       )}
 
+      {/* ─────────── EDIT MODAL ─────────── */}
+      {editingUser && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="glass-card" style={{ width: '400px', padding: '2rem', background: '#fff' }}>
+            <h3 style={{ marginBottom: '1.5rem' }}>Edit User: {editingUser.name}</h3>
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Email</label>
+                <input className="search-input" style={{ width: '100%', padding: '0.5rem' }} type="email" value={editFormData.email} onChange={e => setEditFormData({...editFormData, email: e.target.value})} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Phone No</label>
+                <input className="search-input" style={{ width: '100%', padding: '0.5rem' }} type="text" value={editFormData.phone} onChange={e => setEditFormData({...editFormData, phone: e.target.value})} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Role</label>
+                <select className="search-input" style={{ width: '100%', padding: '0.5rem' }} value={editFormData.role} onChange={e => setEditFormData({...editFormData, role: e.target.value})}>
+                  <option value="student">Student</option>
+                  <option value="trainee">Trainee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Status</label>
+                <select className="search-input" style={{ width: '100%', padding: '0.5rem' }} value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})}>
+                  <option value="Active">Active</option>
+                  <option value="Suspended">Suspended</option>
+                  <option value="Deactivated">Deactivated</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditingUser(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

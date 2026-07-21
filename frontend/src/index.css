@@ -323,7 +323,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .notification-bell:hover {
-  background: rgba(255, 255, 255, 0.6);
+  background: #facc15;
+  color: #000;
+  border-color: #facc15;
 }
 
 .notification-badge {
@@ -403,6 +405,18 @@ h1, h2, h3, h4, h5, h6 {
 
 .btn-outline:hover {
   background: rgba(255, 255, 255, 0.5);
+}
+
+.btn-suspend:hover {
+  background: var(--danger) !important;
+  color: #fff !important;
+  border-color: var(--danger) !important;
+}
+
+.btn-edit:hover {
+  background: #0ea5e9 !important;
+  color: #fff !important;
+  border-color: #0ea5e9 !important;
 }
 
 .btn-danger {
@@ -1021,7 +1035,24 @@ h1, h2, h3, h4, h5, h6 {
 
 .table-container {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
   margin-top: 1rem;
+}
+
+.table-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.table-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-container::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .custom-table {
@@ -1036,12 +1067,25 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
   font-size: 0.8rem;
   font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 10;
 }
 
 .custom-table td {
   padding: 1rem;
   border-bottom: 1px solid rgba(226, 232, 240, 0.5);
   font-size: 0.9rem;
+}
+
+.custom-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.custom-table tbody tr:hover {
+  background-color: var(--secondary);
 }
 
 /* Toggle switches */

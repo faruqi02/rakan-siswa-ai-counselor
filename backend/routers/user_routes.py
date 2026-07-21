@@ -6,7 +6,7 @@ import sqlite3
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
-from schemas import UserPublic, UserPrivate, UserStatusUpdate, TraineeProfileOut, TraineeProfileUpdate
+from schemas import UserPublic, UserPrivate, UserStatusUpdate, TraineeProfileOut, TraineeProfileUpdate, AdminUserUpdate
 from dependencies import get_db, get_current_user, require_role
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -71,13 +71,13 @@ def update_trainee_profile(
 
 
 # ── Admin: list all users ──
-@router.get("/", response_model=List[UserPublic])
+@router.get("/", response_model=List[UserPrivate])
 def list_users(
     conn: sqlite3.Connection = Depends(get_db),
     _admin=Depends(require_role("admin")),
 ):
     rows = conn.execute(
-        "SELECT id, anonymous_name, role, status, flag_count, created_at FROM users ORDER BY created_at DESC"
+        "SELECT id, anonymous_name, real_name, email, phone, gender, role, status, flag_count, created_at FROM users ORDER BY created_at DESC"
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -100,6 +100,36 @@ def update_user_status(
     conn.commit()
     row = conn.execute(
         "SELECT id, anonymous_name, role, status, flag_count, created_at FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "User not found")
+    return dict(row)
+
+# ── Admin: update user details ──
+@router.patch("/{user_id}", response_model=UserPrivate)
+def update_user_details(
+    user_id: int,
+    body: AdminUserUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
+    _admin=Depends(require_role("admin")),
+):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        row = conn.execute("SELECT id, anonymous_name, real_name, email, phone, gender, role, status, flag_count, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "User not found")
+        return dict(row)
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    conn.execute(
+        f"UPDATE users SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
+        (*updates.values(), user_id),
+    )
+    conn.commit()
+    
+    row = conn.execute(
+        "SELECT id, anonymous_name, real_name, email, phone, gender, role, status, flag_count, created_at FROM users WHERE id = ?",
         (user_id,),
     ).fetchone()
     if not row:

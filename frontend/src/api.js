@@ -3,7 +3,7 @@
  * All requests attach the JWT token from sessionStorage automatically.
  */
 
-const BASE = 'http://localhost:8000';
+const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 function getToken() {
   return sessionStorage.getItem('rs_token');
@@ -17,7 +17,8 @@ async function request(method, path, body = null) {
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
 
-  const res = await fetch(`${BASE}${path}`, opts);
+  const url = `${BASE.replace(/\/$/, '')}${path}`;
+  const res = await fetch(url, opts);
 
   // 204 No Content — return null
   if (res.status === 204) return null;
@@ -67,6 +68,8 @@ export const fetchAllUsers       = () => get('/users/');
 export const fetchUserStatus     = (name) => get(`/users/${encodeURIComponent(name)}/status`);
 export const updateUserStatus    = (userId, status) =>
   patch(`/users/${userId}/status`, { status });
+export const updateUserDetails   = (userId, data) =>
+  patch(`/users/${userId}`, data);
 export const updateTraineeProfile = (updates) =>
   patch('/users/trainees/me', updates);
 
